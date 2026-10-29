@@ -9,7 +9,7 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
+Just a simple uart transmission test to see how tiny tapeout works
 
 ## How to test
 
