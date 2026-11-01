@@ -14,7 +14,7 @@ localparam DATA = 4'b0100;
 localparam STOP = 4'b1000;
 
 reg [3:0] state;
-reg [16:0] baud_counter;    // parametrise later on, can fit the 115,200 baud rate currently
+reg [$clog2(CLKS_PER_BIT)-1:0] baud_counter;    // parametrise later on, can fit the 115,200 baud rate currently
 reg [2:0] bit_index;         // indicate which bit we are currently on 
 reg [7:0] shift_reg;         // initial assignment of data, can change after 'start' is asserted
 
