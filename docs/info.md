@@ -13,8 +13,9 @@ Just a simple uart transmission test to see how tiny tapeout works
 
 ## How to test
 
-Explain how to use your project
+Watch UART transmission sent bit-by-bit, just UART by itself and see the memory usage for the chip. Flip-flops use a lot of area, so we aim to minimise flip-flop usage. 
 
 ## External hardware
 
 List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+none.
