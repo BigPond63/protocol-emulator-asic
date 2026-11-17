@@ -2,12 +2,7 @@
 # See https://docs.cocotb.org/en/stable/quickstart.html for more info
 
 # defaults
-ifeq ($(GATES), yes)
 SIM ?= icarus
-else
-SIM ?= verilator
-endif
-
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
