@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_BigPond63 (
+module tt_um_MykiCard78 (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -22,13 +22,15 @@ module tt_um_BigPond63 (
   assign uio_out = 0;
   assign uio_oe  = 0;
 */
-wire tx_data;
-wire busy_sig;
+wire [7:0] rx_data;
+wire copi, cs_n, sclk, done;
 
-assign uo_out = {6'b0, busy_sig, tx_data};
-assign uio_out = 8'b0;
-assign uio_oe  = 8'b0;
+assign uo_out  = {rx_data[3:0], done, sclk, cs_n, copi};
+assign uio_out = {rx_data[7:4], 4'b0};
+assign uio_oe  = 8'b1111_0000;     // uio[7:4] outputs, uio[3:0] inputs
 
+/*
+UART Transmission Test
 uart_tx #(.CLKS_PER_BIT(4)) ins0 ( 
   .clk(clk),
   .rst(~rst_n),
@@ -37,8 +39,23 @@ uart_tx #(.CLKS_PER_BIT(4)) ins0 (
   .tx(tx_data),
   .busy(busy_sig)
 );
+*/
+
+spi_controller #(.MODE(0), .CLK_DIV(4)) ins0 (
+  .clk(clk),
+  .rst(~rst_n),
+  .start(ui_in[0]),
+  .tx_data({uio_in[1:0], ui_in[7:2]}),
+  .cipo(ui_in[1]),
+
+  .rx_data(rx_data),
+  .copi(copi),
+  .cs_n(cs_n),
+  .sclk(sclk),
+  .done(done)
+);
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, ui_in[7:1], uio_in[7:0], 1'b0};
+  wire _unused = &{ena, uio_in[7:2], 1'b0};
 
 endmodule

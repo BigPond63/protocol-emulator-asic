@@ -1,57 +1,58 @@
 # Tiny Tapeout project information
 project:
-  title:        "Example UART"      # Project title
-  author:       "Z"      # Your name
-  discord:      "ziggy4524314215071207"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "UART transmission test"      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
+  title:        "Example SPI"      # Project title
+  author:       "Team Melbourne78"      # Your name
+  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
+  description:  "SPI Transmission GDS test"      # One line description of what your project does
+  language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 202x155 uM.
   tiles: "8x4"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2, 8x2, 3x4, 4x4, 5x4, 6x4 or 8x4
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_BigPond63"
+  top_module:  "tt_um_MykiCard78"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
+    - "spi/spi_pkg.sv"
+    - "spi/spi_controller.sv"
     - "project.v"
-    - "uart_tx.v"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
   ui[0]: "start"
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[1]: "cipo"
+  ui[2]: "tx_data[0]"
+  ui[3]: "tx_data[1]"
+  ui[4]: "tx_data[2]"
+  ui[5]: "tx_data[3]"
+  ui[6]: "tx_data[4]"
+  ui[7]: "tx_data[5]"
 
   # Outputs
-  uo[0]: "tx"
-  uo[1]: "busy"
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  uo[0]: "copi"
+  uo[1]: "cs_n"
+  uo[2]: "sclk"
+  uo[3]: "done"
+  uo[4]: "rx_data[0]"
+  uo[5]: "rx_data[1]"
+  uo[6]: "rx_data[2]"
+  uo[7]: "rx_data[3]"
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
+  uio[0]: "tx_data[6]"
+  uio[1]: "tx_data[7]"
   uio[2]: ""
   uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[4]: "rx_data[4]"
+  uio[5]: "rx_data[5]"
+  uio[6]: "rx_data[6]"
+  uio[7]: "rx_data[7]"
 
 # Do not change!
 yaml_version: 6

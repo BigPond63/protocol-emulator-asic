@@ -1,0 +1,146 @@
+module uart_tx(
+    input [0:0] clk,
+    input [0:0] rst,
+    input [0:0] start,
+    input [7:0] data,
+    output reg [0:0] tx,
+    output reg [0:0] busy
+);
+
+parameter CLKS_PER_BIT = 4;        // 115,200 baud rate, 50mhz/115200 = 434 clock cycles per bit
+localparam IDLE = 4'b0001;
+localparam START = 4'b0010;
+localparam DATA = 4'b0100;
+localparam STOP = 4'b1000;
+
+reg [3:0] state;
+
+reg [2:0] bit_index;         // indicate which bit we are currently on 
+reg [7:0] shift_reg;         // initial assignment of data, can change after 'start' is asserted
+
+localparam CNT_W = $clog2(CLKS_PER_BIT);
+localparam [CNT_W-1:0] CNT_MAX = CNT_W'(CLKS_PER_BIT - 1);
+
+reg [CNT_W-1:0] baud_counter;
+
+
+/*
+    state
+        IDLE
+        START 
+        DATA 
+        STOP
+
+    baud counter
+        count from current bit, from 0 to (CLKS_PER_BIT - 1)
+
+    bit index
+        count which data bit you're on
+
+    shift register (8 bits)
+        holds the byte being sent
+
+    logic for each state
+
+    
+*/
+    always @(posedge clk) begin
+
+        // Rst logic for ASIC -> Return to initial state (ready to send data)
+        if (rst == 1'b1) begin
+            state <= IDLE;
+            tx <= 1'b1;
+            busy <= 1'b0;
+            baud_counter <= {CNT_W{1'b0}};
+            bit_index <= 3'b0;
+        end else begin
+
+            case (state)
+
+                IDLE: begin
+                    // Prepare for start logic (send start bit)
+                    if (start) begin
+                        shift_reg <= data;
+                        busy <= 1'b1;
+                        baud_counter <= {CNT_W{1'b0}};
+                        bit_index <= 3'b000;
+                        state <= START;
+                        tx <= 1'b0;
+                    end else begin
+                        
+                        tx <= 1'b1;
+                    end
+
+                end
+
+                START: begin
+
+                    tx <= 1'b0;
+                    // Wait for CLKS_PER_BIT, load first value to send during DATA
+                    if (baud_counter == CNT_MAX) begin
+                        baud_counter <= '0;
+                        tx <= shift_reg[0];
+                        shift_reg <= {1'b0, shift_reg[7:1]};
+                        state <= DATA;
+                    end else begin
+                        baud_counter <= baud_counter + 1'b1;
+                    end
+
+
+
+                end
+
+
+                DATA: begin
+
+                    if (baud_counter == CNT_MAX) begin
+                        tx <= shift_reg[0];
+                        shift_reg <= {1'b0, shift_reg[7:1]};        // concatenate shift
+                        bit_index <= bit_index + 3'b1;
+                        baud_counter <= {CNT_W{1'b0}};
+
+                        // Bit index updates to 8 at end of clk cycle, so go to STOP during 8th bit
+                        if (bit_index == 3'd7) begin
+                            state <= STOP;
+                            baud_counter <= {CNT_W{1'b0}};
+                            tx <= 1'b1;
+                        end
+                    end else begin
+                        baud_counter <= baud_counter + 1'b1;
+                    end
+
+
+
+
+                end
+
+                STOP: begin
+                    // Wait for CLKS_PER_BIT then send back to idle
+                    if (baud_counter == CNT_MAX) begin
+                        state <= IDLE;
+                        busy <= 1'b0;
+                    end else begin
+                        baud_counter <= baud_counter + 1'b1;
+                    end
+
+                end
+
+            default: begin
+                state <= IDLE;
+            end
+
+
+
+                
+            
+            endcase
+
+        end
+
+    end
+
+
+
+
+
+endmodule
