@@ -2,9 +2,8 @@
 
 
 module spi_controller 
-    import spi_pkg::*; // import within module header more portable for icarus
 #(
-    parameter int MODE = MODE0,
+    parameter int MODE = 0,
     parameter int CLK_DIV = 4
 ) (
     input logic clk,

@@ -11,7 +11,7 @@ endif
 FST ?= -fst # Use more efficient FST format
 TOPLEVEL_LANG ?= verilog
 SRC_DIR = $(PWD)/../src
-PROJECT_SOURCES = spi/spi_pkg.sv spi/spi_controller.sv project.v 
+PROJECT_SOURCES = spi/spi_controller.sv project.v 
 
 export PYTHONPATH := $(SRC_DIR)/spi:$(PYTHONPATH)
 

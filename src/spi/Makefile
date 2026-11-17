@@ -10,7 +10,7 @@ SIM = verilator # or icarus (doesn't work here due to .sv)
 TOPLEVEL_LANG = verilog
 
 # List of Verilog source files.
-VERILOG_SOURCES += $(PWD)/spi_pkg.sv $(PWD)/spi_controller.sv
+VERILOG_SOURCES += $(PWD)/spi_controller.sv
 
 # The name of the toplevel module/entity in your design.
 COCOTB_TOPLEVEL = spi_controller
