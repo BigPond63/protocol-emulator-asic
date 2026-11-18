@@ -1,0 +1,131 @@
+
+module state_machine(
+    input logic clk,
+    input logic rst_n,
+    input logic [7:0] pins_in,
+    output logic [7:0] pins_out,
+    output logic [7:0] pindirs
+);
+
+localparam logic [2:0] op_push_pull = 3'b000;
+localparam logic [2:0] op_io = 3'b001;
+localparam logic [2:0] op_set = 3'b010;
+localparam logic [2:0] op_wait = 3'b011;
+localparam logic [2:0] op_jmp = 3'b100;
+localparam logic [2:0] op_mov = 3'b101;
+localparam logic [2:0] op_irq = 3'b110;
+
+localparam logic [2:0] set_pins_out = 3'b000;
+localparam logic [2:0] set_pindirs = 3'b001;
+localparam logic [2:0] set_x = 3'b010;
+localparam logic [2:0] set_y = 3'b011;
+
+localparam logic [2:0] jmp_always = 3'b000;
+localparam logic [2:0] jmp_xez = 3'b001;
+localparam logic [2:0] jmp_xnezd = 3'b010;
+localparam logic [2:0] jmp_yez = 3'b011;
+localparam logic [2:0] jmp_ynezd = 3'b100;
+localparam logic [2:0] jmp_xney = 3'b101;
+localparam logic [2:0] jmp_pinh = 3'b110;
+localparam logic [2:0] jmp_osrne = 3'b111;
+
+
+logic [7:0] X;
+logic [7:0] Y;
+logic [7:0] osr;
+logic [7:0] isr;
+
+logic [15:0] instruc_mem [0:31];
+logic [4:0] pc;
+logic [15:0] instruction;
+logic [2:0] opcode;
+logic [7:0] operand;
+
+logic [3:0] osr_cnt;
+logic [3:0] delay_cnt;
+logic [3:0] isr_cnt;
+
+logic [4:0] pc_next;
+logic [7:0] x_next;
+logic [7:0] y_next;
+logic [7:0] pins_out_next;
+logic [7:0] pindirs_next;
+
+assign instruction = instruc_mem[pc];
+assign opcode = instruction[15:13];
+assign operand = instruction[7:0];
+
+always_comb begin : next_state_values
+    pc_next = pc + 5'd1;
+
+    x_next = X;
+    y_next = Y;
+    pins_out_next = pins_out;
+    pindirs_next = pindirs;
+
+    case (opcode)
+
+        op_set: begin
+
+            case (operand[7:5]) // selecting which register to modify 
+                set_pins_out: pins_out_next[4:0] = operand[4:0];
+                set_pindirs: pindirs_next[4:0] = operand[4:0];
+                set_x: x_next = {3'b000, operand[4:0]};
+                set_y: y_next = {3'b000, operand[4:0]};
+                default: ; 
+            endcase
+
+        end
+
+        op_jmp: begin
+
+            case (operand[7:5]) // select which condition for jumping
+                jmp_always: pc_next = operand[4:0];
+                jmp_xez: pc_next = (X=='0) ? operand[4:0] : pc + 5'd1;
+
+                jmp_xnezd: begin
+                    pc_next = (X!='0) ? operand[4:0] : (pc + 5'd1);
+                    x_next = X - 8'd1;
+                end
+                
+                jmp_yez: pc_next = (Y=='0) ? operand[4:0] : pc + 5'd1;
+
+                jmp_ynezd: begin
+                    pc_next = (Y!='0) ? operand[4:0] : (pc + 5'd1);
+                    y_next = Y - 8'd1;
+                end
+
+                jmp_xney: pc_next = (X!=Y) ? operand[4:0] : (pc + 5'd1);
+                    
+                jmp_pinh: pc_next = pins_in[0] ? operand[4:0] : pc + 5'd1; // TODO, jump pin from config in compiler 
+                jmp_osrne: pc_next = (osr_cnt != 4'd8) ? operand[4:0] : (pc + 5'd1);
+            endcase
+
+        end
+
+        default: ;
+
+    endcase
+end
+
+always_ff @(posedge clk) begin
+
+    if (~rst_n) begin
+        X <= '0;
+        Y <= '0;
+        pc <= '0;
+        pins_out <= '0;
+        pindirs <= '0;
+    end else begin
+        X <= x_next;
+        Y <= y_next;
+        pc <= pc_next;
+        pins_out <= pins_out_next;
+        pindirs <= pindirs_next;
+    end
+
+end
+
+
+
+endmodule
