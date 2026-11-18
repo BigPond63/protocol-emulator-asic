@@ -1,11 +1,22 @@
 
 module state_machine(
+    input logic load_en,
+    input logic load_data, 
+
     input logic clk,
     input logic rst_n,
     input logic [7:0] pins_in,
     output logic [7:0] pins_out,
     output logic [7:0] pindirs
 );
+
+
+
+
+
+logic [15:0] load_shift;
+logic [3:0] load_bit_cnt;
+logic [4:0] load_addr;
 
 localparam logic [2:0] op_push_pull = 3'b000;
 localparam logic [2:0] op_io = 3'b001;
@@ -54,6 +65,23 @@ logic [7:0] pindirs_next;
 assign instruction = instruc_mem[pc];
 assign opcode = instruction[15:13];
 assign operand = instruction[7:0];
+assign osr_cnt = 4'd8;
+
+// instructional memory loader block -> claude here 
+always_ff @(posedge clk) begin
+    if (!rst_n || !load_en) begin
+        load_bit_cnt <= '0;
+        load_addr    <= '0;
+    end else begin
+        load_shift   <= {load_shift[14:0], load_data};   // shift in at the bottom
+        load_bit_cnt <= load_bit_cnt + 1'b1;
+
+        if (load_bit_cnt == 4'd15) begin
+            instruc_mem[load_addr] <= {load_shift[14:0], load_data};
+            load_addr <= load_addr + 1'b1;
+        end
+    end
+end
 
 always_comb begin : next_state_values
     pc_next = pc + 5'd1;
@@ -110,7 +138,7 @@ end
 
 always_ff @(posedge clk) begin
 
-    if (~rst_n) begin
+    if (!rst_n || load_en) begin
         X <= '0;
         Y <= '0;
         pc <= '0;

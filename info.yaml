@@ -1,31 +1,31 @@
 # Tiny Tapeout project information
 project:
-  title:        "Example UART"      # Project title
-  author:       "Z"      # Your name
-  discord:      "ziggy4524314215071207"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "UART transmission test"      # One line description of what your project does
-  language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
+  title:        "State Machine Example (not finished)"      # Project title
+  author:       "Team Melbourne78"      # Your name
+  discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
+  description:  "Test state machine with specific instructions"      # One line description of what your project does
+  language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
+  clock_hz:     10000000       # Clock frequency in Hz (or 0 if not applicable)
 
   # How many tiles your design occupies? A single tile is about 202x155 uM.
-  tiles: "8x4"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2, 8x2, 3x4, 4x4, 5x4, 6x4 or 8x4
+  tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 6x2, 8x2, 3x4, 4x4, 5x4, 6x4 or 8x4
 
   # Your top module name must start with "tt_um_". Make it unique by including your github username:
-  top_module:  "tt_um_BigPond63"
+  top_module:  "tt_um_MykiCard78"
 
   # List your project's source files here.
   # Source files must be in ./src and you must list each source file separately, one per line.
   # Don't forget to also update `PROJECT_SOURCES` in test/Makefile.
   source_files:
     - "project.v"
-    - "uart_tx.v"
+    - "state_machine.sv"
 
 # The pinout of your project. Leave unused pins blank. DO NOT delete or add any pins.
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: "start"
-  ui[1]: ""
+  ui[0]: "load_en"
+  ui[1]: "load_data"
   ui[2]: ""
   ui[3]: ""
   ui[4]: ""
@@ -34,8 +34,8 @@ pinout:
   ui[7]: ""
 
   # Outputs
-  uo[0]: "tx"
-  uo[1]: "busy"
+  uo[0]: ""
+  uo[1]: ""
   uo[2]: ""
   uo[3]: ""
   uo[4]: ""
@@ -44,14 +44,14 @@ pinout:
   uo[7]: ""
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "pin0"
+  uio[1]: "pin1"
+  uio[2]: "pin2"
+  uio[3]: "pin3"
+  uio[4]: "pin4"
+  uio[5]: "pin5"
+  uio[6]: "pin6"
+  uio[7]: "pin7"
 
 # Do not change!
 yaml_version: 6

@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_BigPond63 (
+module tt_um_MykiCard78 (
     input  wire [7:0] ui_in,    // Dedicated inputs
     output wire [7:0] uo_out,   // Dedicated outputs
     input  wire [7:0] uio_in,   // IOs: Input path
@@ -22,23 +22,21 @@ module tt_um_BigPond63 (
   assign uio_out = 0;
   assign uio_oe  = 0;
 */
-wire tx_data;
-wire busy_sig;
 
-assign uo_out = {6'b0, busy_sig, tx_data};
-assign uio_out = 8'b0;
-assign uio_oe  = 8'b0;
+assign uo_out = 8'b0;
 
-uart_tx #(.CLKS_PER_BIT(4)) ins0 ( 
+
+state_machine sm (
   .clk(clk),
-  .rst(~rst_n),
-  .start(ui_in[0]),
-  .data(8'h44),
-  .tx(tx_data),
-  .busy(busy_sig)
+  .rst_n(rst_n),
+  .pins_in(uio_in),
+  .pins_out(uio_out),
+  .pindirs(uio_oe),
+  .load_en(ui_in[0]),
+  .load_data(ui_in[1])
 );
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, ui_in[7:1], uio_in[7:0], 1'b0};
+  wire _unused = &{ena, ui_in[7:2], 1'b0};
 
 endmodule
