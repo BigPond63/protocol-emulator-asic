@@ -107,6 +107,10 @@ always_comb begin : next_state_values
 
         op_jmp: begin
 
+        end
+
+        op_jmp: begin
+
             case (operand[7:5]) // select which condition for jumping
                 jmp_always: pc_next = operand[4:0];
                 jmp_xez: pc_next = (X=='0) ? operand[4:0] : pc + 5'd1;
