@@ -3,6 +3,9 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
+NUM_SLOTS = 32
+JMP_SELF_3 = 0b100_00000_000_00011  # jmp 3 (used as padding)
+
 # Test program: set x,3 / loop: jmp x--,1 / set pins,1 / end: jmp 3
 PROGRAM = [
     0b010_00000_010_00011,  # 0: set x, 3
@@ -16,7 +19,10 @@ LOAD_DATA = 1 << 1  # ui_in[1]
 
 
 async def load_program(dut, words):
-    """Shift each 16-bit word in through ui_in[1], MSB first, with ui_in[0] held high."""
+    """Shift every slot in through ui_in[1], MSB first, with ui_in[0] held high.
+    Unused slots are padded so no instruction memory is left as X in
+    gate-level simulation."""
+    words = list(words) + [JMP_SELF_3] * (NUM_SLOTS - len(words))
     for word in words:
         for i in range(15, -1, -1):
             bit = (word >> i) & 1
@@ -43,7 +49,9 @@ async def test_set_and_jmp(dut):
     await ClockCycles(dut.clk, 20)
 
     # After the loop finishes, set pins,1 should have driven pin 0 high
-    pins = int(dut.uio_out.value)
-    dut._log.info(f"uio_out = {pins:08b}")
-    assert pins & 1 == 1, f"expected uio_out[0] = 1, got {pins:08b}"
-    assert int(dut.uo_out.value) == 0, "uo_out should be unused (0)"
+    val = dut.uio_out.value
+    dut._log.info(f"uio_out = {val}")
+    assert val.is_resolvable, f"uio_out has X/Z bits: {val}"
+    assert int(val) & 1 == 1, f"expected uio_out[0] = 1, got {val}"
+    assert dut.uo_out.value.is_resolvable and int(dut.uo_out.value) == 0, \
+        f"uo_out should be unused (0), got {dut.uo_out.value}"
