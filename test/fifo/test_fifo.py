@@ -231,7 +231,7 @@ async def test_underflow(dut):
     assert dut.count.value == 0, f"After read: count expected 0, got {dut.count.value}"
 
 @cocotb.test()
-async def test_read_write_simultaneous(dut):
+async def test_read_write_simultaneous_partial_full(dut):
     """
     Check all cases
         - Partially full with read and write
@@ -266,7 +266,33 @@ async def test_read_write_simultaneous(dut):
         assert data_read == val, f"FIFO drained, data incorrect, expected: {val:x}, got: {data_read:x}"
 
     
+    # Now test r/w simultaneously with empty fifo (claude)
+@cocotb.test()
+async def test_rw_simultaneous_empty(dut):
+    """
+    Read + write together on an empty FIFO:
+    write goes through, read is ignored (do_rd blocked by empty).
+    """
+    await setup(dut)
+    assert dut.empty.value == 1, f"Before r/w: empty expected 1, got {dut.empty.value}"
 
+    # Read and write together. rd_data is stale while empty, so it isn't sampled or checked.
+    dut.rd_en.value = 1
+    await write_entry(dut, 0x5A)
+    dut.rd_en.value = 0
+    await FallingEdge(dut.clk)              # let the simultaneous edge land
+
+    # Write happened, read was ignored: one entry in the FIFO
+    assert dut.count.value == 1, f"After r/w: count expected 1, got {dut.count.value}"
+    assert dut.empty.value == 0, f"After r/w: empty expected 0, got {dut.empty.value}"
+    assert dut.full.value == 0,  f"After r/w: full expected 0, got {dut.full.value}"
+
+    # The written value is now the head, and reading it empties the FIFO
+    data_read = await read_entry(dut)
+    assert data_read == 0x5A, f"Read back: expected 0x5a, got {data_read:x}"
+    assert dut.empty.value == 1, f"After read: empty expected 1, got {dut.empty.value}"
+    assert dut.count.value == 0, f"After read: count expected 0, got {dut.count.value}"
+    
 
 
 
