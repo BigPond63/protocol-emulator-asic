@@ -93,6 +93,18 @@ always_comb begin : next_state_values
 
     case (opcode)
 
+        op_push_pull: begin
+
+                // push logic
+            if (operand[7] == 0) begin
+
+            end else begin
+                // pull logic
+                
+
+            end
+        end
+
         op_set: begin
 
             case (operand[7:5]) // selecting which register to modify 
@@ -135,7 +147,26 @@ always_comb begin : next_state_values
 
         end
 
-        default: ;
+        op_wait: begin
+            // src 0 = pin, src 1 = irq flag
+            
+                if (operand[7] == 1'b0) begin
+
+                    // pins_in value through indexing not matching polarity in instruction
+                    if (pins_in[operand[2:0]] != operand[6]) begin
+                        // wait logic
+                        pc_next = pc;
+                        x_next = X;
+                        y_next = Y;
+                        pins_out_next = pins_out;
+                        pindirs_next = pindirs;
+
+                    end
+
+                end else begin
+                    // IRQ wait logic TODO
+                end
+        end
 
     endcase
 end

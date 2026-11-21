@@ -1,0 +1,160 @@
+#! /usr/bin/vvp
+:ivl_version "12.0 (stable)";
+:ivl_delay_selection "TYPICAL";
+:vpi_time_precision - 12;
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/system.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/vhdl_sys.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/vhdl_textio.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/v2005_math.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/va_math.vpi";
+:vpi_module "/usr/lib/x86_64-linux-gnu/ivl/v2009.vpi";
+S_0x63332d0565a0 .scope package, "$unit" "$unit" 2 1;
+ .timescale -9 -12;
+S_0x63332d056730 .scope module, "fifo" "fifo" 3 6;
+ .timescale -9 -12;
+    .port_info 0 /INPUT 1 "clk";
+    .port_info 1 /INPUT 1 "rst_n";
+    .port_info 2 /INPUT 1 "wr_en";
+    .port_info 3 /INPUT 1 "rd_en";
+    .port_info 4 /INPUT 8 "wr_data";
+    .port_info 5 /OUTPUT 8 "rd_data";
+    .port_info 6 /OUTPUT 1 "full";
+    .port_info 7 /OUTPUT 1 "empty";
+P_0x63332d096790 .param/l "CNT_W" 1 3 21, +C4<00000000000000000000000000000011>;
+P_0x63332d0967d0 .param/l "DEPTH" 0 3 8, +C4<00000000000000000000000000000100>;
+P_0x63332d096810 .param/l "PTR_W" 1 3 20, +C4<00000000000000000000000000000010>;
+P_0x63332d096850 .param/l "WIDTH" 0 3 7, +C4<00000000000000000000000000001000>;
+o0x7452f52a0378 .functor BUFZ 1, C4<z>; HiZ drive
+L_0x63332d0ad240 .functor AND 1, o0x7452f52a0378, L_0x63332d0ad150, C4<1>, C4<1>;
+o0x7452f52a02b8 .functor BUFZ 1, C4<z>; HiZ drive
+L_0x63332d0ad420 .functor AND 1, o0x7452f52a02b8, L_0x63332d0ad300, C4<1>, C4<1>;
+L_0x63332d0ad790 .functor BUFZ 8, L_0x63332d0ad510, C4<00000000>, C4<00000000>, C4<00000000>;
+L_0x7452f4fb7018 .functor BUFT 1, C4<100>, C4<0>, C4<0>, C4<0>;
+v0x63332d083b20_0 .net/2u *"_ivl_0", 2 0, L_0x7452f4fb7018;  1 drivers
+v0x63332d0abc80_0 .net *"_ivl_13", 0 0, L_0x63332d0ad300;  1 drivers
+v0x63332d0abd40_0 .net *"_ivl_16", 7 0, L_0x63332d0ad510;  1 drivers
+v0x63332d0abe00_0 .net *"_ivl_18", 3 0, L_0x63332d0ad5e0;  1 drivers
+L_0x7452f4fb70a8 .functor BUFT 1, C4<00>, C4<0>, C4<0>, C4<0>;
+v0x63332d0abee0_0 .net *"_ivl_21", 1 0, L_0x7452f4fb70a8;  1 drivers
+L_0x7452f4fb7060 .functor BUFT 1, C4<000>, C4<0>, C4<0>, C4<0>;
+v0x63332d0ac010_0 .net/2u *"_ivl_4", 2 0, L_0x7452f4fb7060;  1 drivers
+v0x63332d0ac0f0_0 .net *"_ivl_9", 0 0, L_0x63332d0ad150;  1 drivers
+o0x7452f52a0168 .functor BUFZ 1, C4<z>; HiZ drive
+v0x63332d0ac1b0_0 .net "clk", 0 0, o0x7452f52a0168;  0 drivers
+v0x63332d0ac270_0 .var "count", 2 0;
+v0x63332d0ac350_0 .net "do_rd", 0 0, L_0x63332d0ad420;  1 drivers
+v0x63332d0ac410_0 .net "do_wr", 0 0, L_0x63332d0ad240;  1 drivers
+v0x63332d0ac4d0_0 .net "empty", 0 0, L_0x63332d0acfe0;  1 drivers
+v0x63332d0ac590_0 .net "full", 0 0, L_0x63332d0acee0;  1 drivers
+v0x63332d0ac650 .array "mem", 3 0, 7 0;
+v0x63332d0ac710_0 .net "rd_data", 7 0, L_0x63332d0ad790;  1 drivers
+v0x63332d0ac7f0_0 .net "rd_en", 0 0, o0x7452f52a02b8;  0 drivers
+v0x63332d0ac8b0_0 .var "rd_ptr", 1 0;
+o0x7452f52a0318 .functor BUFZ 1, C4<z>; HiZ drive
+v0x63332d0acaa0_0 .net "rst_n", 0 0, o0x7452f52a0318;  0 drivers
+o0x7452f52a0348 .functor BUFZ 8, C4<zzzzzzzz>; HiZ drive
+v0x63332d0acb60_0 .net "wr_data", 7 0, o0x7452f52a0348;  0 drivers
+v0x63332d0acc40_0 .net "wr_en", 0 0, o0x7452f52a0378;  0 drivers
+v0x63332d0acd00_0 .var "wr_ptr", 1 0;
+E_0x63332d092690 .event posedge, v0x63332d0ac1b0_0;
+L_0x63332d0acee0 .cmp/eq 3, v0x63332d0ac270_0, L_0x7452f4fb7018;
+L_0x63332d0acfe0 .cmp/eq 3, v0x63332d0ac270_0, L_0x7452f4fb7060;
+L_0x63332d0ad150 .reduce/nor L_0x63332d0acee0;
+L_0x63332d0ad300 .reduce/nor L_0x63332d0acfe0;
+L_0x63332d0ad510 .array/port v0x63332d0ac650, L_0x63332d0ad5e0;
+L_0x63332d0ad5e0 .concat [ 2 2 0 0], v0x63332d0ac8b0_0, L_0x7452f4fb70a8;
+S_0x63332d083990 .scope module, "cocotb_iverilog_dump" "cocotb_iverilog_dump" 4 1;
+ .timescale -9 -12;
+    .scope S_0x63332d056730;
+T_0 ;
+    %wait E_0x63332d092690;
+    %load/vec4 v0x63332d0acaa0_0;
+    %nor/r;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_0.0, 8;
+    %pushi/vec4 0, 0, 2;
+    %assign/vec4 v0x63332d0acd00_0, 0;
+    %pushi/vec4 0, 0, 2;
+    %assign/vec4 v0x63332d0ac8b0_0, 0;
+    %pushi/vec4 0, 0, 3;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.1;
+T_0.0 ;
+    %load/vec4 v0x63332d0ac410_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_0.2, 8;
+    %load/vec4 v0x63332d0acb60_0;
+    %load/vec4 v0x63332d0acd00_0;
+    %pad/u 4;
+    %ix/vec4 3;
+    %ix/load 4, 0, 0; Constant delay
+    %assign/vec4/a/d v0x63332d0ac650, 0, 4;
+    %load/vec4 v0x63332d0acd00_0;
+    %addi 1, 0, 2;
+    %assign/vec4 v0x63332d0acd00_0, 0;
+T_0.2 ;
+    %load/vec4 v0x63332d0ac350_0;
+    %flag_set/vec4 8;
+    %jmp/0xz  T_0.4, 8;
+    %load/vec4 v0x63332d0ac8b0_0;
+    %addi 1, 0, 2;
+    %assign/vec4 v0x63332d0ac8b0_0, 0;
+T_0.4 ;
+    %load/vec4 v0x63332d0ac410_0;
+    %load/vec4 v0x63332d0ac350_0;
+    %concat/vec4; draw_concat_vec4
+    %dup/vec4;
+    %pushi/vec4 0, 0, 2;
+    %cmp/u;
+    %jmp/1 T_0.6, 6;
+    %dup/vec4;
+    %pushi/vec4 1, 0, 2;
+    %cmp/u;
+    %jmp/1 T_0.7, 6;
+    %dup/vec4;
+    %pushi/vec4 2, 0, 2;
+    %cmp/u;
+    %jmp/1 T_0.8, 6;
+    %dup/vec4;
+    %pushi/vec4 3, 0, 2;
+    %cmp/u;
+    %jmp/1 T_0.9, 6;
+    %load/vec4 v0x63332d0ac270_0;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.11;
+T_0.6 ;
+    %load/vec4 v0x63332d0ac270_0;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.11;
+T_0.7 ;
+    %load/vec4 v0x63332d0ac270_0;
+    %subi 1, 0, 3;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.11;
+T_0.8 ;
+    %load/vec4 v0x63332d0ac270_0;
+    %addi 1, 0, 3;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.11;
+T_0.9 ;
+    %load/vec4 v0x63332d0ac270_0;
+    %assign/vec4 v0x63332d0ac270_0, 0;
+    %jmp T_0.11;
+T_0.11 ;
+    %pop/vec4 1;
+T_0.1 ;
+    %jmp T_0;
+    .thread T_0;
+    .scope S_0x63332d083990;
+T_1 ;
+    %vpi_call/w 4 3 "$dumpfile", "sim_build/rtl/fifo.fst" {0 0 0};
+    %vpi_call/w 4 4 "$dumpvars", 32'sb00000000000000000000000000000000, S_0x63332d056730 {0 0 0};
+    %end;
+    .thread T_1;
+# The file index is used to find the file name in the following table.
+:file_names 5;
+    "N/A";
+    "<interactive>";
+    "-";
+    "/home/BigPond63/protocol-emulator-asic/test/fifo/../../src/fifo_test.sv";
+    "sim_build/rtl/cocotb_iverilog_dump.v";

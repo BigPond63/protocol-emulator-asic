@@ -14,6 +14,13 @@ PROGRAM = [
     0b100_00000_000_00011,  # 3: jmp 3
 ]
 
+PROGRAM_WAIT = [
+    0b011_00000_010_00000, # 0: wait 1 pin 0
+    0b010_00000_000_00001, # 1: set pins, 1
+    0b100_00000_000_00010, # 2: jmp 2
+
+]
+
 LOAD_EN = 1 << 0    # ui_in[0]
 LOAD_DATA = 1 << 1  # ui_in[1]
 
@@ -55,3 +62,30 @@ async def test_set_and_jmp(dut):
     assert int(val) & 1 == 1, f"expected uio_out[0] = 1, got {val}"
     assert dut.uo_out.value.is_resolvable and int(dut.uo_out.value) == 0, \
         f"uo_out should be unused (0), got {dut.uo_out.value}"
+
+@cocotb.test()
+async def test_wait(dut):
+    cocotb.start_soon(Clock(dut.clk, 100, unit="ns").start())
+
+    # Reset
+    dut.ena.value = 1
+    dut.ui_in.value = 0
+    dut.uio_in.value = 0          # pin 0 starts LOW
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+
+    await load_program(dut, PROGRAM_WAIT)
+
+    # 1. Pin low: WAIT must stall, so set pins,1 never runs
+    await ClockCycles(dut.clk, 10)
+    val = dut.uio_out.value
+    assert val.is_resolvable, f"uio_out has X/Z bits: {val}"
+    assert int(val) & 1 == 0, f"WAIT didn't stall: uio_out = {val}"
+
+    # 2. Raise pin 0: WAIT releases, set pins,1 runs
+    dut.uio_in.value = 0b0000_0001
+    await ClockCycles(dut.clk, 5)
+    val = dut.uio_out.value
+    assert val.is_resolvable, f"uio_out has X/Z bits: {val}"
+    assert int(val) & 1 == 1, f"WAIT didn't release: uio_out = {val}"
