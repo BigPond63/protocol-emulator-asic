@@ -1,13 +1,48 @@
 
+"""
+Document String is written by Claude
+cocotb testbench for the FIFO in src/fifo_test.sv (module `fifo`).
 
+DUT behaviour
+-------------
+- First-word fall-through (FWFT): when not empty, rd_data already shows the
+  head entry. rd_en pops it; it does not fetch.
+- Parameters: DEPTH=4, WIDTH=8 (PTR_W=2, CNT_W=3).
+- Active-low reset (rst_n). Reset clears pointers, count and flags, but NOT
+  the memory, so rd_data is stale/meaningless whenever empty == 1.
+- do_wr = wr_en && !full    -> writes while full are dropped
+- do_rd = rd_en && !empty   -> reads while empty are ignored
+- Simultaneous read + write:
+    partly full : both happen, count unchanged
+    full        : read happens, write is dropped
+    empty       : write happens, read is ignored
 
-# fwft fifo
-# standard fifo
+Testbench conventions
+---------------------
+- Every test calls setup() first: starts the clock and resets the DUT.
+  The simulator is not restarted between tests, so never rely on state
+  left behind by a previous test.
+- Inputs are driven and outputs sampled at the FALLING edge, so values
+  have settled after the rising edge that updated them.
+- Helpers (write_entry, read_entry, fill_fifo) drive the DUT; tests do
+  the checking.
+- test_deque_random compares the DUT against a collections.deque model.
+  The model decides do_wr/do_rd from its own state before each edge.
+
+Running
+-------
+    make                                    # all tests, waves on (WAVES=1)
+    make COCOTB_TESTCASE=test_drain         # a single test
+    gtkwave sim_build/rtl/fifo.fst &        # view waveforms
+    make clean                              # after changing Makefile settings
+"""
 
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge, ReadOnly, Timer
+import random
+from collections import deque 
 
 
 # Steps to walk through
@@ -27,14 +62,8 @@ from cocotb.triggers import ClockCycles, FallingEdge, RisingEdge, ReadOnly, Time
 
 RESET_CYCLES = 5
 CLK_PERIOD_NS = 10
-
-@cocotb.test()
-async def test_clock(dut):
-    clk = Clock(dut.clk, 10, unit="ns")
-
-    cocotb.start_soon(clk.start())
-
-    await ClockCycles(dut.clk, 5)
+seed_deque = 7
+depth_fifo = 4
 
 
 @cocotb.test()
@@ -110,6 +139,9 @@ async def test_full(dut):
     assert dut.empty.value == 0, f"Fifo should be empty, got: {dut.empty.value}"
 
     await ClockCycles(dut.clk, 3)
+
+async def wait_cycles(dut, n_cycles = 5):
+    await ClockCycles(dut.clk, 5)
 
 
 # Helper function to write data 
@@ -293,11 +325,173 @@ async def test_rw_simultaneous_empty(dut):
     assert dut.empty.value == 1, f"After read: empty expected 1, got {dut.empty.value}"
     assert dut.count.value == 0, f"After read: count expected 0, got {dut.count.value}"
     
+@cocotb.test()
+async def test_rw_simultaneous_full(dut):
+    """
+    Read and write together on a full FIFO
+    Expected behaviour: Write should fail, read goes through
+    """
 
-
-
-
+    await setup(dut)
     
+    await fill_fifo(dut, [0xAB, 0xCD, 0xEF, 0xFA]) # Can do a rand here
+
+    await FallingEdge(dut.clk)
+
+    # Read / write data simultaneously
+    data_read = dut.rd_data.value
+    dut.rd_en.value = 1
+    await write_entry(dut, 0x12)
+    dut.rd_en.value = 0 
+    await FallingEdge(dut.clk)
+
+    assert data_read == 0xAB, f"Read wrong data value for FIFO, expected 0xAB, got: {data_read}"
+    assert dut.full.value == 0, f"FIFO full flag incorrect, expected: 0, got: {dut.full.value}"
+    assert dut.empty.value == 0, f"FIFO empty flag incorrect, expected 0, got : {dut.empty.value}"
+
+
+    # Drain data to check that writing 0x12 was never done
+    for i, val in enumerate([0xCD, 0xEF, 0xFA]):
+        rd_now = await read_entry(dut)
+        assert rd_now == val, f"Read data was incorrect for a r/w simultaneous, expected: {val:x}, got: {rd_now:x}"
+        if (i + 1==len([0xCD, 0xEF, 0xFA])):
+            assert dut.empty.value == 1, \
+                f"Empty value is not set to 1 while simeltaneous r/w occurs, expected: 1, got {dut.empty.value}"
+        else:
+            assert dut.empty.value == 0, \
+                f"Empty value is not set to 0 while simulataneous r/w occurs, expected: 0, got: {dut.empty.value}"
+        assert dut.full.value == 0, \
+            f"Full value is not set to 0 while simultaneous r/w occurs, expected: 0, got: {dut.full.value}"
+
+
+@cocotb.test()
+async def test_wrap_around(dut):
+    """
+    Test wraparound behaviour, write 3 and read 3 values 
+    """
+    await setup(dut)
+    values_test = list(range(99)) # Test 99 values, from 0 to 98
+
+    length_list = len(values_test)
+
+    burst = 3 # read and write 3 values each time -> check wrap-around through full/empty flags
+
+    for i in range(0, length_list, burst):
+        # Get the chunk of data to r/w
+        chunk = values_test[i:i+burst]
+
+        # write data values into fifo
+        for val in chunk:
+            await write_entry(dut, val)
+            await FallingEdge(dut.clk)
+            assert dut.empty.value == 0, \
+                f"FIFO empty flag incorrect when testing wrap around (writing phase), expected: 0, got {dut.empty.value}"
+        
+        
+
+        # read data values into fifo, check empty and full flags each time
+        for j,val in enumerate(chunk):
+            read_value = await read_entry(dut)
+            
+            if (j== len(chunk)-1):
+                assert dut.empty.value == 1, f"Fifo empty flag not 1 when testing wrap around, expected 1, got: {dut.empty.value}"
+            else:
+                assert dut.empty.value == 0, f"FIFO empty flag incorrect when testing wrap around, expected 0, got: {dut.empty.value}"
+            
+            assert dut.full.value == 0, f"FIFO full flag incorrect when testing wrap around, expected 0, got: {dut.full.value}"
+            assert read_value == val, f"FIFO incorrectly read value when testing wrap around, expected: {val}, got: {read_value}"
+        
+
+
+@cocotb.test()
+async def test_deque_random(dut, prob_bit=0.5):
+    await setup(dut)
+    random.seed(seed_deque)
+    dut._log.info(f"Random seed: {seed_deque}")
+
+    # Create object from class 
+    deque_model = deque()
+
+    for i in range(1000):
+        # Set to integer from a random float b/w 0 and 1
+        wr_rand = int(random.random() < prob_bit) 
+        rd_rand = int(random.random() < prob_bit)
+        wr_data = random.getrandbits(8)
+
+        dut.wr_en.value = wr_rand
+        dut.rd_en.value = rd_rand
+        dut.wr_data.value = wr_data
+
+        do_wr = (len(deque_model) !=depth_fifo) and wr_rand
+        do_rd = (len(deque_model)!=0 and rd_rand)
+
+        # Read front of list if read is set
+        if do_rd:
+            read_data = dut.rd_data.value
+            
+            assert read_data == deque_model[0], \
+                f"Read data from FIFO and deque not the same, expected (deque): {deque_model[0]}, got (fifo): {read_data:d}"
+            deque_model.popleft()
+
+        await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+
+        if do_wr:
+            deque_model.append(wr_data)
+
+
+        fifo_count_cur = dut.count.value
+        deque_count_cur = len(deque_model)
+        deque_full_flag = (len(deque_model) == depth_fifo)
+
+        assert deque_count_cur == fifo_count_cur, \
+            f"FIFO and deque model count not the same, expected (deque): {deque_count_cur}, got (fifo): {fifo_count_cur:d}"
+        
+        if deque_count_cur == 0:
+            assert dut.empty.value == 1, f"Empty flag not set when comparing to deque model, expected 1, got: {dut.empty.value}"
+        else:
+            assert dut.empty.value == 0, f"Empty flag incorrect when comparing to deque model, expected 0, got{dut.empty.value}"
+
+        assert dut.full.value == deque_full_flag, f"Full flag incorrect when comparing to deque model, expected: {deque_full_flag}, got: {dut.full.value}"
+        
+
+
+@cocotb.test()
+async def test_reset_from_full(dut):
+    await setup(dut)
+
+    data_fill = [0xFF, 0xFA, 0xAF, 0xBE]
+    await fill_fifo(dut, data_fill)
+
+    await FallingEdge(dut.clk)
+    dut.rst_n.value = 0
+    await wait_cycles(dut, 5)
+    await FallingEdge(dut.clk)
+    dut.rst_n.value = 1
+
+    # Check that read and write pointers are working correctly after reset
+    await write_entry(dut, 0x23)
+    await FallingEdge(dut.clk)
+
+    read_data = await read_entry(dut)
+
+    assert read_data == 0x23, \
+        f"Read data incorrect from testing reset, expected 0x23, got:{read_data}"
+    assert dut.empty.value == 1,\
+     f"After reset: empty expected 1, got {dut.empty.value}"
+    assert dut.full.value == 0, \
+     f"After reset: full expected 0, got {dut.full.value}"
+    assert dut.count.value == 0, \
+    f"After reset: count expected 0, got {dut.count.value}"
+
+
+
+
+
+
+
+
+
 
 
 
