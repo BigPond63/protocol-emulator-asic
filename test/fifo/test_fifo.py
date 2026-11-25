@@ -1,21 +1,20 @@
 
 """
-Document String is written by Claude
 cocotb testbench for the FIFO in src/fifo_test.sv (module `fifo`).
 
 DUT behaviour
 -------------
-- First-word fall-through (FWFT): when not empty, rd_data already shows the
-  head entry. rd_en pops it; it does not fetch.
-- Parameters: DEPTH=4, WIDTH=8 (PTR_W=2, CNT_W=3).
-- Active-low reset (rst_n). Reset clears pointers, count and flags, but NOT
-  the memory, so rd_data is stale/meaningless whenever empty == 1.
-- do_wr = wr_en && !full    -> writes while full are dropped
-- do_rd = rd_en && !empty   -> reads while empty are ignored
-- Simultaneous read + write:
-    partly full : both happen, count unchanged
-    full        : read happens, write is dropped
-    empty       : write happens, read is ignored
+
+First-word fall-through fifo: When not empty, rd_data already shows head entry. 
+    Parameters: DEPTH = 4, WIDTH=8
+    Active low reset (rst_n). Reset clears pointers, count and flags, but not memory, 
+        but will be overwritten with new entries
+    Writes only when full is logic 0
+    Read only when fifo is not empty
+    Simultaneous read and write behaviour:
+        Partially full: Both happen
+        Full: Only read happens
+        Empty: Write happens, read ignored
 
 Testbench conventions
 ---------------------
@@ -31,10 +30,10 @@ Testbench conventions
 
 Running
 -------
-    make                                    # all tests, waves on (WAVES=1)
-    make COCOTB_TESTCASE=test_drain         # a single test
-    gtkwave sim_build/rtl/fifo.fst &        # view waveforms
-    make clean                              # after changing Makefile settings
+    make                                    
+    make COCOTB_TESTCASE=test_drain         
+    gtkwave sim_build/rtl/fifo.fst &        
+    make clean                             
 """
 
 

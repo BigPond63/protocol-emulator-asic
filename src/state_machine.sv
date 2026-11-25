@@ -1,5 +1,8 @@
 
-module state_machine(
+module state_machine #(
+    parameter WIDTH = 32,
+    parameter DEPTH = 4
+)(
     input logic load_en,
     input logic load_data, 
 
@@ -9,6 +12,7 @@ module state_machine(
     output logic [7:0] pins_out,
     output logic [7:0] pindirs
 );
+
 
 
 
@@ -43,9 +47,8 @@ localparam logic [2:0] jmp_osrne = 3'b111;
 
 logic [7:0] X;
 logic [7:0] Y;
-logic [7:0] osr;
-logic [7:0] isr;
-
+logic [WIDTH-1:0] osr;
+logic [WIDTH-1:0] isr;
 logic [15:0] instruc_mem [0:31];
 logic [4:0] pc;
 logic [15:0] instruction;
@@ -62,12 +65,38 @@ logic [7:0] y_next;
 logic [7:0] pins_out_next;
 logic [7:0] pindirs_next;
 
+logic wr_en_rx;
+logic [WIDTH-1:0] isr_next;
+
+
+fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) rx_fifo  (
+    .clk(clk),
+    .rst_n(rst_n),
+    .wr_en(wr_en_rx),
+    .rd_en(),
+    .wr_data(isr),
+    .rd_data(),
+    .full(),
+    .empty()
+);
+
+fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) tx_fifo  (
+    .clk(clk),
+    .rst_n(rst_n),
+    .wr_en(),
+    .rd_en(),
+    .wr_data(),
+    .rd_data(osr),
+    .full(),
+    .empty()
+);
+
 assign instruction = instruc_mem[pc];
 assign opcode = instruction[15:13];
 assign operand = instruction[7:0];
 assign osr_cnt = 4'd8;
 
-// instructional memory loader block -> claude here 
+// instructional memory loader block
 always_ff @(posedge clk) begin
     if (!rst_n || !load_en) begin
         load_bit_cnt <= '0;
@@ -90,6 +119,8 @@ always_comb begin : next_state_values
     y_next = Y;
     pins_out_next = pins_out;
     pindirs_next = pindirs;
+    wr_en_rx = 0;
+    isr_next = isr;
 
     case (opcode)
 
@@ -97,9 +128,14 @@ always_comb begin : next_state_values
 
                 // push logic
             if (operand[7] == 0) begin
+                // Data from the outside is given to the cpu 
+                // pins -> in -> ISR -> push -> RX FIFO
+                wr_en_rx = 1;
+                isr_next = '0;
 
             end else begin
                 // pull logic
+
                 
 
             end
@@ -117,9 +153,6 @@ always_comb begin : next_state_values
 
         end
 
-        op_jmp: begin
-
-        end
 
         op_jmp: begin
 
@@ -179,12 +212,14 @@ always_ff @(posedge clk) begin
         pc <= '0;
         pins_out <= '0;
         pindirs <= '0;
+        isr <= '0;
     end else begin
         X <= x_next;
         Y <= y_next;
         pc <= pc_next;
         pins_out <= pins_out_next;
         pindirs <= pindirs_next;
+        isr <= isr_next;
     end
 
 end
