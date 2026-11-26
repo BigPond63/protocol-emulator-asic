@@ -150,7 +150,7 @@ always_comb begin : next_state_values
             end
         end
 
-        op_io: begin
+        op_io: begin // TODO Count logic 
             if (operand[7] == in_dir) begin
                 isr_next = {isr[WIDTH-2:0], pins_in[0]};
                 isr_cnt_next = isr_cnt + 1'b1;

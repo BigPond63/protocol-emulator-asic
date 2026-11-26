@@ -62,6 +62,8 @@ def IN(src, count, order):
     assert (0 <= order <= 1), f"Order not 0 or 1, got {order}"
     return (OP_IO << 13) | (0 << 7) | ((count & 0b111) << 4) | (src << 1) | order # mask for 8 -> 0b000
 
+def PUSH():
+    return (OP_PUSH_PULL << 13) | (0 << 7)
 
 async def setup(dut, reset_cycles = RESET_CYCLES):
     Clock(dut.clk, CLOCK_PERIOD_NS, unit="ns").start(start_high=False)
@@ -286,7 +288,80 @@ async def test_isr_shift_one(dut):
     await FallingEdge(dut.clk)
 
     # Check that in has shifted into the isr
-    assert int(dut.user_project.sm.isr) == 1, \
-        f"ISR shifted value is not 1, got {dut.user_project.sm.isr}"
-    assert int(dut.user_project.sm.isr_cnt) == 1, \
-    f"ISR count value is not 1, got {dut.user_project.sm.isr}"
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 1, \
+        f"ISR shifted value is not 1, got: {got}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 1, \
+    f"ISR count value is not 1, got: {got}"
+
+@cocotb.test()
+async def test_push_0xFF(dut):
+    await setup(dut)
+    dut.uio_in.value = 0b1 
+
+    await load_instructional_memory(dut, 
+        [IN(IN_SRC_PINS, count=1, order=MSB_FIRST)]*8 + 
+        [PUSH(), JMP(JMP_ALWAYS, addr=9)]
+    )
+
+    # Execute the IN instructions, giving ISR value of 0xFF and isr_cnt 8
+    await ClockCycles(dut.clk, num_cycles=8)
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 255, f"After 8 INs: isr expected 0xFF, got {got:#x}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 8, f"After 8 INs: isr_cnt expected 8, got {got}"
+
+    # Execute PUSH, clearing isr and isr_cnt
+    await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 0, f"After PUSH: isr should clear to 0, got {got:#x}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 0, f"After PUSH: isr_cnt should clear to 0, got {got}"
+
+    got = int(dut.user_project.sm.rx_fifo.rd_data.value) 
+    assert got == 0xFF, \
+        f"After PUSH: RX FIFO head expected 0xFF, got {got:#x}"
+
+
+@cocotb.test()
+async def test_push_0xA5(dut): #0b1010_0101
+
+    test_value = 0b1010_0101
+    await setup(dut)
+    
+
+    await load_instructional_memory(dut, 
+        [IN(IN_SRC_PINS, count=1, order=MSB_FIRST)]*8 + 
+        [PUSH(), JMP(JMP_ALWAYS, addr=9)]
+    )
+
+    # Execute the IN instructions, giving ISR value of 0xA5 and isr_cnt 8
+    for i in range(7, -1, -1):
+        dut.uio_in.value = (test_value >> i) & 1 # mask to get the bit at position 0 
+        await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 0xA5, f"After 8 INs: isr expected 0xA5, got {got:#x}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 8, f"After 8 INs: isr_cnt expected 8, got {got:#x}"
+
+    # Execute PUSH, clearing isr and isr_cnt
+    await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 0, f"After PUSH: isr should clear to 0, got {got:#x}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 0, f"After PUSH: isr_cnt should clear to 0, got {got:#x}"
+
+    got = int(dut.user_project.sm.rx_fifo.rd_data.value) 
+    assert got == 0xA5, \
+        f"After PUSH: RX FIFO head expected 0xA5, got {got:#x}"
+
