@@ -365,3 +365,73 @@ async def test_push_0xA5(dut): #0b1010_0101
     assert got == 0xA5, \
         f"After PUSH: RX FIFO head expected 0xA5, got {got:#x}"
 
+@cocotb.test()
+async def test_pins_in_count_three(dut):
+    await setup(dut)
+
+    await load_instructional_memory(dut, [
+        IN(IN_SRC_PINS, count=3, order=MSB_FIRST),
+        JMP(JMP_ALWAYS, addr=1)
+    ])
+
+    # Mask should also make the shifted value 0b0000_0101
+    dut.uio_in.value = 0b0000_1101 
+
+    await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+
+    got_isr = int(dut.user_project.sm.isr.value)
+    assert got_isr == 5, f"isr value incorrect, expected: 5, got {got_isr:08b}"
+
+    got_isr_cnt = int(dut.user_project.sm.isr_cnt.value)
+    assert got_isr_cnt == 3, f"isr_cnt value incorrect, expected: 3, got {got_isr_cnt:08b}"
+
+@cocotb.test()
+async def test_pins_in_lsb(dut):
+    await setup(dut)
+
+    await load_instructional_memory(dut, [
+        IN(IN_SRC_PINS, count=8, order=LSB_FIRST),
+        JMP(JMP_ALWAYS, addr=1)
+    ])
+
+    dut.uio_in.value = 0b1010_0101 
+    await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+
+    got_isr = int(dut.user_project.sm.isr.value)
+    assert got_isr == 0xA500_0000, f"isr value incorrect, expected: 0xA500_0000, got {got_isr:#010x}"
+
+    got_isr_cnt = int(dut.user_project.sm.isr_cnt.value)
+    assert got_isr_cnt == 8, f"isr_cnt value incorrect, expected: 8, got {got_isr_cnt:08b}"
+
+async def check_in_pins(dut, count, order, pin_values, expected_isr):
+    """Run one IN per entry in pin_values, then check isr and isr_cnt."""
+    await setup(dut)
+    n = len(pin_values)
+    await load_instructional_memory(dut,
+        [IN(IN_SRC_PINS, count, order)] * n + [JMP(JMP_ALWAYS, addr=n)]
+    )
+
+    for v in pin_values:
+        dut.uio_in.value = v
+        await RisingEdge(dut.clk)
+        await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == expected_isr, f"isr: expected {expected_isr:#010x}, got {got:#010x}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == count * n, f"isr_cnt: expected {count * n}, got {got}"
+
+@cocotb.test()
+async def test_in_serial_lsb(dut):
+    bits = [(0xA5 >> i) & 1 for i in range(8)] # Place bits into a list 1010_0101
+    await check_in_pins(dut, 1, LSB_FIRST, bits, 0xA500_0000)
+
+@cocotb.test()
+async def test_in_parallel_lsb(dut):
+    await check_in_pins(dut, 8, LSB_FIRST, [0xA5], 0xA500_0000)
+
+@cocotb.test()
+async def test_in_count3_mask(dut):
+    await check_in_pins(dut, 3, MSB_FIRST, [0b1101], 0b101)

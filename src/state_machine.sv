@@ -49,6 +49,9 @@ localparam logic [2:0] jmp_osrne = 3'b111;
 localparam logic in_dir = 1'b0;
 localparam logic out_dir = 1'b1;
 
+localparam logic msb_first = 1'b0;
+localparam logic lsb_first = 1'b1;
+
 
 logic [WIDTH-1:0] X;
 logic [WIDTH-1:0] Y;
@@ -74,6 +77,8 @@ logic [7:0] pindirs_next;
 logic wr_en_rx;
 logic [WIDTH-1:0] isr_next;
 
+logic [3:0] shift_amt_isr;
+logic [WIDTH-1:0] shift_mask;
 
 fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) rx_fifo  (
     .clk(clk),
@@ -125,9 +130,11 @@ always_comb begin : next_state_values
     y_next = Y;
     pins_out_next = pins_out;
     pindirs_next = pindirs;
-    wr_en_rx = 0;
+    wr_en_rx = '0;
     isr_next = isr;
     isr_cnt_next = isr_cnt;
+    shift_amt_isr = '0;
+    shift_mask = '0;
 
     case (opcode)
         default: ;
@@ -150,12 +157,30 @@ always_comb begin : next_state_values
             end
         end
 
-        op_io: begin // TODO Count logic 
+        op_io: begin 
             if (operand[7] == in_dir) begin
-                isr_next = {isr[WIDTH-2:0], pins_in[0]};
-                isr_cnt_next = isr_cnt + 1'b1;
-            end else begin
+                shift_amt_isr = {operand[6:4]==3'b000, operand[6:4]}; // 0b000 is shift by 8
+                shift_mask = (WIDTH'(1) << shift_amt_isr) -1; // shift mask for pins_in values
 
+                if (operand[0] == msb_first) begin
+
+
+                    // shift isr and place lower pins as pins_in
+                    isr_next = (isr << shift_amt_isr) | (WIDTH'(pins_in) & shift_mask); 
+                    
+                    isr_cnt_next = isr_cnt + {2'b00, shift_amt_isr};
+                end else begin 
+                    // lsb first
+
+                    // Use shift mask to ensure correct pins are shifted, then shift right, placing older isr values below 
+                    isr_next = ((WIDTH'(pins_in) & shift_mask) << (WIDTH - WIDTH'(shift_amt_isr)) ) | (isr >> shift_amt_isr); 
+                    
+                    isr_cnt_next = isr_cnt + {2'b00, shift_amt_isr};
+                end
+
+
+            end else begin 
+                // out direction logic 
             end
 
 
