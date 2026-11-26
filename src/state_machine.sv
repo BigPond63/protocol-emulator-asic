@@ -10,8 +10,10 @@ module state_machine #(
     input logic rst_n,
     input logic [7:0] pins_in,
     output logic [7:0] pins_out,
-    output logic [7:0] pindirs
-    
+    output logic [7:0] pindirs,
+
+    input logic tx_en,
+    input logic tx_data
 );
 
 
@@ -19,8 +21,7 @@ module state_machine #(
 
 
 
-logic [15:0] load_shift;
-logic [3:0] load_bit_cnt;
+
 logic [4:0] load_addr;
 
 localparam logic [2:0] op_push_pull = 3'b000;
@@ -99,6 +100,13 @@ logic [WIDTH-1:0] mov_data;
 
 logic [WIDTH-1:0] out_data;
 
+
+logic [15:0]      instr_word;
+logic             instr_valid;
+logic [WIDTH-1:0] tx_word;
+logic             tx_valid;
+
+
 fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) rx_fifo  (
     .clk(clk),
     .rst_n(rst_n),
@@ -113,9 +121,9 @@ fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) rx_fifo  (
 fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) tx_fifo  (
     .clk(clk),
     .rst_n(rst_n),
-    .wr_en(),
+    .wr_en(tx_valid),
     .rd_en(),
-    .wr_data(),
+    .wr_data(tx_word),
     .rd_data(),
     .full(),
     .empty()
@@ -127,20 +135,27 @@ assign operand = instruction[7:0];
 
 
 // instructional memory loader block
+serial_loader #(.WIDTH(16)) instr_loader (
+    .clk(clk), .rst_n(rst_n), .en(load_en), .data(load_data),
+    .word(instr_word), .valid(instr_valid)
+);
+
+
+// Instruction memory write
 always_ff @(posedge clk) begin
     if (!rst_n || !load_en) begin
-        load_bit_cnt <= '0;
-        load_addr    <= '0;
-    end else begin
-        load_shift   <= {load_shift[14:0], load_data};   // shift in at the bottom
-        load_bit_cnt <= load_bit_cnt + 1'b1;
-
-        if (load_bit_cnt == 4'd15) begin
-            instruc_mem[load_addr] <= {load_shift[14:0], load_data};
-            load_addr <= load_addr + 1'b1;
-        end
+        load_addr <= '0;
+    end else if (instr_valid) begin
+        instruc_mem[load_addr] <= instr_word;
+        load_addr <= load_addr + 1'b1;
     end
 end
+
+serial_loader #(.WIDTH(WIDTH)) tx_loader (
+    .clk(clk), .rst_n(rst_n), .en(tx_en), .data(tx_data),
+    .word(tx_word), .valid(tx_valid)
+);
+
 
 always_comb begin : next_state_values
     pc_next = pc + 5'd1;

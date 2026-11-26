@@ -33,10 +33,12 @@ state_machine sm (
   .pins_out(uio_out),
   .pindirs(uio_oe),
   .load_en(ui_in[0]),
-  .load_data(ui_in[1])
+  .load_data(ui_in[1]),
+  .tx_en(ui_in[2]),
+  .tx_data(ui_in[3])
 );
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, ui_in[7:2], 1'b0};
+  wire _unused = &{ena, ui_in[7:4], 1'b0};
 
 endmodule
