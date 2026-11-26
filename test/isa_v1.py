@@ -37,6 +37,16 @@ SET_Y = 0b011
 
 PIN_SOURCE = 0 
 
+IN_SRC_PINS = 0b000
+IN_SRC_X = 0b001 
+IN_SRC_Y = 0b010 
+IN_SRC_NULL = 0b011 
+IN_SRC_OSR = 0b101 
+# TODO -> 100, 110 and 111 left out for now
+
+MSB_FIRST = 0
+LSB_FIRST = 1
+
 def JMP(cond, addr):
     return (OP_JMP << 13) | (cond << 5) | addr # Address between 0 and 31 inclusive
 
@@ -45,6 +55,12 @@ def SET(dst, value):
 
 def WAIT(src, polarity, index):
     return (OP_WAIT << 13) | (src << 7) | (polarity << 6) | index
+
+def IN(src, count, order):
+    assert (1 <= count <= 8), f"Count not between 1 and 8, got: {count}"
+    assert (0 <= src <= 7), f"Soure not between 0 and 7, got {src}"
+    assert (0 <= order <= 1), f"Order not 0 or 1, got {order}"
+    return (OP_IO << 13) | (0 << 7) | ((count & 0b111) << 4) | (src << 1) | order # mask for 8 -> 0b000
 
 
 async def setup(dut, reset_cycles = RESET_CYCLES):
@@ -99,9 +115,9 @@ async def test_set_x_seven(dut):
     await RisingEdge(dut.clk)
     await FallingEdge(dut.clk)
 
-    got = dut.user_project.sm.X.value
+    got = int(dut.user_project.sm.X.value)
     assert got == 7, \
-        f"Scratch register loading failure, expected 7:, got {dut.user_project.sm.X.value}"
+        f"Scratch register loading failure, expected: 7, got {got}"
 
 @cocotb.test()
 async def test_jmp_xez(dut):
@@ -164,3 +180,113 @@ async def test_wait(dut):
     await RisingEdge(dut.clk)          # SET X executes
     await FallingEdge(dut.clk)
     assert int(dut.user_project.sm.X.value) == 5
+
+async def check_dec_loop(dut, set_dest, jmp_cond, reg_name):
+    await setup(dut)
+    await load_instructional_memory(dut, [
+        SET(set_dest, value=3),
+        JMP(jmp_cond, addr=1),
+        SET(SET_PINS_OUT, value=0x1F),
+        JMP(JMP_ALWAYS, addr=3),
+    ])
+    await ClockCycles(dut.clk, 5)
+    await FallingEdge(dut.clk)
+    reg = int(getattr(dut.user_project.sm, reg_name).value)
+    assert int(dut.user_project.sm.pc.value) == 2
+    assert reg == 0xFFFFFFFF, f"{reg_name} should wrap to 0xFFFFFFFF, got {reg}"
+
+    assert int(dut.uio_out.value) == 0, "SET PINS ran too early"
+
+    await RisingEdge(dut.clk)   # SET PINS executes
+    await FallingEdge(dut.clk)
+    assert int(dut.uio_out.value) == 0x1F, "SET PINS didn't run after loop exit"
+
+@cocotb.test()
+async def test_jmp_x_dec_loop(dut):
+    await check_dec_loop(dut, SET_X, JMP_XNEZD, "X")
+
+@cocotb.test()
+async def test_jmp_y_dec_loop(dut):
+    await check_dec_loop(dut, SET_Y, JMP_YNEZD, "Y")
+
+
+async def check_jmp(dut, prep, cond, taken, pins=0):
+    """Run `prep` instructions, then one JMP. Check whether it jumped."""
+    target = 20
+    program = prep + [JMP(cond, addr=target)]
+
+    await setup(dut)
+    dut.uio_in.value = pins
+    await load_instructional_memory(dut, program)
+
+    await ClockCycles(dut.clk, len(program))   # one edge per instruction
+    await FallingEdge(dut.clk)
+
+    # Taken: If the jmp condition was true, pc jumps to the target
+    # Not taken: JMP still runs but falls through to the next address,
+    # which is just past the end of the program (len(program))
+    expected = target if taken else len(program)
+    got = int(dut.user_project.sm.pc.value)
+    assert got == expected, f"cond={cond:03b} taken={taken}: pc={got}, expected {expected}"
+
+@cocotb.test()
+async def test_jmp_always(dut):
+    await check_jmp(dut, [], JMP_ALWAYS, taken=True)
+
+@cocotb.test()
+async def test_jmp_yez_taken(dut):
+    await check_jmp(dut, [], JMP_YEZ, taken=True)            # Y = 0 after reset
+
+@cocotb.test()
+async def test_jmp_yez_not_taken(dut):
+    await check_jmp(dut, [SET(SET_Y, 1)], JMP_YEZ, taken=False)
+
+@cocotb.test()
+async def test_jmp_xney_taken(dut):
+    await check_jmp(dut, [SET(SET_X, 3), SET(SET_Y, 4)], JMP_XNEY, taken=True)
+
+@cocotb.test()
+async def test_jmp_xney_not_taken(dut):
+    await check_jmp(dut, [SET(SET_X, 3), SET(SET_Y, 3)], JMP_XNEY, taken=False)
+
+@cocotb.test()
+async def test_jmp_pin_taken(dut):
+    await check_jmp(dut, [], JMP_PINH, taken=True, pins=0b0000_0001)
+
+@cocotb.test()
+async def test_jmp_pin_not_taken(dut):
+    await check_jmp(dut, [], JMP_PINH, taken=False, pins=0)
+    
+
+@cocotb.test()
+async def test_in_opcode(dut):
+    
+    got = IN(IN_SRC_PINS, 1, MSB_FIRST)
+    assert got == 0b001_00000_0_001_000_0, \
+        f"'In' instruction encoding incorrect, expected: 0b001_00000_0_001_000_0, got {got:016b}"
+
+    got = IN(IN_SRC_PINS, 8, MSB_FIRST)
+    assert got == 0b001_00000_0_000_000_0, \
+        f"'In' instruction encoding incorrect, expected: 0b001_00000_0_000_000_0, got {got:016b}"
+    
+    got = IN(IN_SRC_X, 8, LSB_FIRST)
+    assert got == 0b001_00000_0_000_001_1, \
+        f"'In' instruction encoding incorrect, expected: 0b001_00000_0_000_001_1, got {got:016b}"
+
+@cocotb.test()
+async def test_isr_shift_one(dut):
+    await setup(dut)
+    dut.uio_in.value = 0b1 
+
+    await load_instructional_memory(dut, [
+        IN(IN_SRC_PINS, 1, MSB_FIRST)
+    ])
+    # Run IN
+    await RisingEdge(dut.clk)
+    await FallingEdge(dut.clk)
+
+    # Check that in has shifted into the isr
+    assert int(dut.user_project.sm.isr) == 1, \
+        f"ISR shifted value is not 1, got {dut.user_project.sm.isr}"
+    assert int(dut.user_project.sm.isr_cnt) == 1, \
+    f"ISR count value is not 1, got {dut.user_project.sm.isr}"

@@ -34,6 +34,8 @@ localparam logic [2:0] set_pins_out = 3'b000;
 localparam logic [2:0] set_pindirs = 3'b001;
 localparam logic [2:0] set_x = 3'b010;
 localparam logic [2:0] set_y = 3'b011;
+localparam logic [2:0] set_pins_set = 3'b100;
+localparam logic [2:0] set_pins_clr = 3'b101;
 
 localparam logic [2:0] jmp_always = 3'b000;
 localparam logic [2:0] jmp_xez = 3'b001;
@@ -44,9 +46,12 @@ localparam logic [2:0] jmp_xney = 3'b101;
 localparam logic [2:0] jmp_pinh = 3'b110;
 localparam logic [2:0] jmp_osrne = 3'b111;
 
+localparam logic in_dir = 1'b0;
+localparam logic out_dir = 1'b1;
 
-logic [7:0] X;
-logic [7:0] Y;
+
+logic [WIDTH-1:0] X;
+logic [WIDTH-1:0] Y;
 logic [WIDTH-1:0] osr;
 logic [WIDTH-1:0] isr;
 logic [15:0] instruc_mem [0:31];
@@ -55,13 +60,14 @@ logic [15:0] instruction;
 logic [2:0] opcode;
 logic [7:0] operand;
 
-logic [3:0] osr_cnt;
+logic [$clog2(WIDTH):0] osr_cnt;
 logic [3:0] delay_cnt;
-logic [3:0] isr_cnt;
+logic [$clog2(WIDTH):0] isr_cnt;
+logic [$clog2(WIDTH):0] isr_cnt_next;
 
 logic [4:0] pc_next;
-logic [7:0] x_next;
-logic [7:0] y_next;
+logic [WIDTH-1:0] x_next;
+logic [WIDTH-1:0] y_next;
 logic [7:0] pins_out_next;
 logic [7:0] pindirs_next;
 
@@ -94,7 +100,7 @@ fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) tx_fifo  (
 assign instruction = instruc_mem[pc];
 assign opcode = instruction[15:13];
 assign operand = instruction[7:0];
-assign osr_cnt = 4'd8;
+assign osr_cnt = 6'd8; // need to make variable l8r
 
 // instructional memory loader block
 always_ff @(posedge clk) begin
@@ -121,8 +127,10 @@ always_comb begin : next_state_values
     pindirs_next = pindirs;
     wr_en_rx = 0;
     isr_next = isr;
+    isr_cnt_next = isr_cnt;
 
     case (opcode)
+        default: ;
 
         op_push_pull: begin
 
@@ -132,6 +140,7 @@ always_comb begin : next_state_values
                 // pins -> in -> ISR -> push -> RX FIFO
                 wr_en_rx = 1;
                 isr_next = '0;
+                isr_cnt_next = '0;
 
             end else begin
                 // pull logic
@@ -141,13 +150,26 @@ always_comb begin : next_state_values
             end
         end
 
+        op_io: begin
+            if (operand[7] == in_dir) begin
+                isr_next = {isr[WIDTH-2:0], pins_in[0]};
+                isr_cnt_next = isr_cnt + 1'b1;
+            end else begin
+
+            end
+
+
+        end
+
         op_set: begin
 
             case (operand[7:5]) // selecting which register to modify 
                 set_pins_out: pins_out_next[4:0] = operand[4:0];
                 set_pindirs: pindirs_next[4:0] = operand[4:0];
-                set_x: x_next = {3'b000, operand[4:0]};
-                set_y: y_next = {3'b000, operand[4:0]};
+                set_x: x_next = {{(WIDTH-5){1'b0}}, operand[4:0]};
+                set_y: y_next = {{(WIDTH-5){1'b0}}, operand[4:0]};
+                set_pins_set: pins_out_next[4:0] = pins_out[4:0] | operand[4:0];
+                set_pins_clr: pins_out_next[4:0] = pins_out[4:0] & ~operand[4:0];
                 default: ; 
             endcase
 
@@ -162,20 +184,20 @@ always_comb begin : next_state_values
 
                 jmp_xnezd: begin
                     pc_next = (X!='0) ? operand[4:0] : (pc + 5'd1);
-                    x_next = X - 8'd1;
+                    x_next = X - 1'b1;
                 end
                 
                 jmp_yez: pc_next = (Y=='0) ? operand[4:0] : pc + 5'd1;
 
                 jmp_ynezd: begin
                     pc_next = (Y!='0) ? operand[4:0] : (pc + 5'd1);
-                    y_next = Y - 8'd1;
+                    y_next = Y - 1'b1;
                 end
 
                 jmp_xney: pc_next = (X!=Y) ? operand[4:0] : (pc + 5'd1);
                     
                 jmp_pinh: pc_next = pins_in[0] ? operand[4:0] : pc + 5'd1; // TODO, jump pin from config in compiler 
-                jmp_osrne: pc_next = (osr_cnt != 4'd8) ? operand[4:0] : (pc + 5'd1);
+                jmp_osrne: pc_next = (osr_cnt != 6'd8) ? operand[4:0] : (pc + 5'd1);
             endcase
 
         end
@@ -213,6 +235,7 @@ always_ff @(posedge clk) begin
         pins_out <= '0;
         pindirs <= '0;
         isr <= '0;
+        isr_cnt <= '0;
     end else begin
         X <= x_next;
         Y <= y_next;
@@ -220,6 +243,7 @@ always_ff @(posedge clk) begin
         pins_out <= pins_out_next;
         pindirs <= pindirs_next;
         isr <= isr_next;
+        isr_cnt <= isr_cnt_next;
     end
 
 end
