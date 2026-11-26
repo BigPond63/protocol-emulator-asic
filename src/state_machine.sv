@@ -11,6 +11,7 @@ module state_machine #(
     input logic [7:0] pins_in,
     output logic [7:0] pins_out,
     output logic [7:0] pindirs
+    
 );
 
 
@@ -52,6 +53,15 @@ localparam logic out_dir = 1'b1;
 localparam logic msb_first = 1'b0;
 localparam logic lsb_first = 1'b1;
 
+localparam logic [2:0] io_pins = 3'b000;
+localparam logic [2:0] io_x    = 3'b001;
+localparam logic [2:0] io_y    = 3'b010;
+localparam logic [2:0] io_null = 3'b011;
+localparam logic [2:0] io_isr = 3'b100;
+localparam logic [2:0] io_pindirs  = 3'b101;
+localparam logic [2:0] io_osr = 3'b110;
+
+
 
 logic [WIDTH-1:0] X;
 logic [WIDTH-1:0] Y;
@@ -77,8 +87,17 @@ logic [7:0] pindirs_next;
 logic wr_en_rx;
 logic [WIDTH-1:0] isr_next;
 
-logic [3:0] shift_amt_isr;
+logic [3:0] shift_amt;
 logic [WIDTH-1:0] shift_mask;
+
+logic [WIDTH-1:0] in_data;
+
+logic [WIDTH-1:0] osr_next;
+logic [$clog2(WIDTH):0] osr_cnt_next;
+
+logic [WIDTH-1:0] mov_data;
+
+logic [WIDTH-1:0] out_data;
 
 fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) rx_fifo  (
     .clk(clk),
@@ -97,7 +116,7 @@ fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) tx_fifo  (
     .wr_en(),
     .rd_en(),
     .wr_data(),
-    .rd_data(osr),
+    .rd_data(),
     .full(),
     .empty()
 );
@@ -105,7 +124,7 @@ fifo #(.WIDTH(WIDTH), .DEPTH(DEPTH)) tx_fifo  (
 assign instruction = instruc_mem[pc];
 assign opcode = instruction[15:13];
 assign operand = instruction[7:0];
-assign osr_cnt = 6'd8; // need to make variable l8r
+
 
 // instructional memory loader block
 always_ff @(posedge clk) begin
@@ -133,8 +152,13 @@ always_comb begin : next_state_values
     wr_en_rx = '0;
     isr_next = isr;
     isr_cnt_next = isr_cnt;
-    shift_amt_isr = '0;
+    shift_amt = '0;
     shift_mask = '0;
+    in_data = '0;
+    osr_next = osr;
+    osr_cnt_next = osr_cnt;
+    mov_data = '0;
+    out_data = '0;
 
     case (opcode)
         default: ;
@@ -158,29 +182,58 @@ always_comb begin : next_state_values
         end
 
         op_io: begin 
+            shift_amt = {operand[6:4]==3'b000, operand[6:4]}; // 0b000 is shift by 8
+            shift_mask = (WIDTH'(1) << shift_amt) -1; // shift mask for pins_in values
+
+            case (operand[3:1])
+                io_pins: in_data = WIDTH'(pins_in);
+                io_x: in_data = X;
+                io_y: in_data = Y;
+                io_null: in_data = '0;
+                io_osr: in_data = osr;
+                default ;
+            endcase
+
             if (operand[7] == in_dir) begin
-                shift_amt_isr = {operand[6:4]==3'b000, operand[6:4]}; // 0b000 is shift by 8
-                shift_mask = (WIDTH'(1) << shift_amt_isr) -1; // shift mask for pins_in values
+
 
                 if (operand[0] == msb_first) begin
 
 
                     // shift isr and place lower pins as pins_in
-                    isr_next = (isr << shift_amt_isr) | (WIDTH'(pins_in) & shift_mask); 
+                    isr_next = (isr << shift_amt) | (in_data & shift_mask); 
                     
-                    isr_cnt_next = isr_cnt + {2'b00, shift_amt_isr};
+                    isr_cnt_next = isr_cnt + {2'b00, shift_amt};
                 end else begin 
                     // lsb first
 
                     // Use shift mask to ensure correct pins are shifted, then shift right, placing older isr values below 
-                    isr_next = ((WIDTH'(pins_in) & shift_mask) << (WIDTH - WIDTH'(shift_amt_isr)) ) | (isr >> shift_amt_isr); 
+                    isr_next = ((in_data & shift_mask) << (WIDTH - WIDTH'(shift_amt)) ) | (isr >> shift_amt); 
                     
-                    isr_cnt_next = isr_cnt + {2'b00, shift_amt_isr};
+                    isr_cnt_next = isr_cnt + {2'b00, shift_amt};
                 end
 
 
             end else begin 
                 // out direction logic 
+
+                if (operand[0] == msb_first) begin
+                    out_data = (osr >> WIDTH'(WIDTH-shift_amt)) & shift_mask; /* top n bits of osr, moved to bottom, masked */
+                    osr_next = osr << shift_amt; /* osr shifted left by n, data value exits from top*/
+                end else begin
+                    out_data = osr & shift_mask; /* bottom n bits of osr, masked */
+                    osr_next = osr >> shift_amt; /* osr shifted right by n, data value exits from bottom*/
+                end
+                osr_cnt_next = osr_cnt + {2'b00, shift_amt};
+
+                case (operand[3:1])
+                    io_pins: pins_out_next = (pins_out & ~shift_mask[7:0]) | out_data[7:0]; /* keep other pins, replace low n */
+                    io_x:    x_next = out_data;
+                    io_y:    y_next = out_data;
+                    default: ;
+                endcase
+
+
             end
 
 
@@ -222,7 +275,37 @@ always_comb begin : next_state_values
                 jmp_xney: pc_next = (X!=Y) ? operand[4:0] : (pc + 5'd1);
                     
                 jmp_pinh: pc_next = pins_in[0] ? operand[4:0] : pc + 5'd1; // TODO, jump pin from config in compiler 
-                jmp_osrne: pc_next = (osr_cnt != 6'd8) ? operand[4:0] : (pc + 5'd1);
+                jmp_osrne: pc_next = (osr_cnt < WIDTH) ? operand[4:0] : (pc + 5'd1);
+            endcase
+
+        end
+
+        op_mov: begin
+            // Get data from source
+            case (operand[2:0])
+                io_pins: mov_data = WIDTH'(pins_in);
+                io_x: mov_data = X;
+                io_y: mov_data = Y;
+                io_null: mov_data = '0;
+                io_isr: mov_data = isr;
+                io_osr: mov_data = osr;
+                default ;
+            endcase
+
+            case (operand[7:5])
+                io_pins: pins_out_next = mov_data[7:0];
+                io_x: x_next = mov_data;
+                io_y: y_next = mov_data;
+                io_null: ;
+                io_isr: begin
+                    isr_next = mov_data;
+                    isr_cnt_next = '0;
+                end
+                io_osr: begin
+                    osr_next = mov_data;
+                    osr_cnt_next = '0;
+                end
+                default ;
             endcase
 
         end
@@ -261,6 +344,8 @@ always_ff @(posedge clk) begin
         pindirs <= '0;
         isr <= '0;
         isr_cnt <= '0;
+        osr <= '0;
+        osr_cnt <= '0;
     end else begin
         X <= x_next;
         Y <= y_next;
@@ -269,6 +354,9 @@ always_ff @(posedge clk) begin
         pindirs <= pindirs_next;
         isr <= isr_next;
         isr_cnt <= isr_cnt_next;
+        osr <= osr_next;
+        osr_cnt <= osr_cnt_next;
+        
     end
 
 end

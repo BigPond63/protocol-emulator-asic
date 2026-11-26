@@ -41,11 +41,21 @@ IN_SRC_PINS = 0b000
 IN_SRC_X = 0b001 
 IN_SRC_Y = 0b010 
 IN_SRC_NULL = 0b011 
-IN_SRC_OSR = 0b101 
+IN_SRC_OSR = 0b110
 # TODO -> 100, 110 and 111 left out for now
 
 MSB_FIRST = 0
 LSB_FIRST = 1
+
+IO_PINS = 0b000
+IO_X    = 0b001
+IO_Y    = 0b010
+IO_NULL = 0b011
+IO_ISR  = 0b100
+IO_PINDIRS = 0b101
+IO_OSR     = 0b110
+
+MOV_COPY = 0b00
 
 def JMP(cond, addr):
     return (OP_JMP << 13) | (cond << 5) | addr # Address between 0 and 31 inclusive
@@ -65,6 +75,12 @@ def IN(src, count, order):
 def PUSH():
     return (OP_PUSH_PULL << 13) | (0 << 7)
 
+def OUT(dst, count, order):
+    assert 1 <= count <= 8, f"Count not between 1 and 8, got: {count}"
+    assert 0 <= dst <= 7, f"Destination not between 0 and 7, got {dst}"
+    assert 0 <= order <= 1, f"Order not 0 or 1, got {order}"
+    return (OP_IO << 13) | (1 << 7) | ((count & 0b111) << 4) | (dst << 1) | order
+
 async def setup(dut, reset_cycles = RESET_CYCLES):
     Clock(dut.clk, CLOCK_PERIOD_NS, unit="ns").start(start_high=False)
 
@@ -81,10 +97,10 @@ async def setup(dut, reset_cycles = RESET_CYCLES):
 async def load_instruction(dut, words:list[int]):
     for instr in words:
         for i in range(15, -1, -1): # MSB first
-            dut.ui_in[0].value = 1 # enable signal on 
-            dut.ui_in[1].value = (instr >> i) & 0b1 # data bit shifted in 
+            bit = (instr >> i) & 1
+            dut.ui_in.value = (bit << 1) | 1
             await RisingEdge(dut.clk)
-    dut.ui_in[0].value = 0
+    dut.ui_in.value = 0
 
 
 async def load_instructional_memory(dut, instr_list =[0xA5C3]):
@@ -435,3 +451,152 @@ async def test_in_parallel_lsb(dut):
 @cocotb.test()
 async def test_in_count3_mask(dut):
     await check_in_pins(dut, 3, MSB_FIRST, [0b1101], 0b101)
+
+
+@cocotb.test()
+async def test_in_x_count5(dut):
+    await setup(dut)
+
+    await load_instructional_memory(dut, [
+        SET(SET_X, 0b10101),                  # 0: X = 21
+        IN(IN_SRC_X, count=5, order=MSB_FIRST),  # 1: ISR <- X[4:0]
+        JMP(JMP_ALWAYS, addr=2),              # 2: infinite loop
+    ])
+
+    await ClockCycles(dut.clk, 2)   # SET, then IN
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 0b10101, f"IN X, 5: isr expected 0b10101, got {got:#034b}"
+
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 5, f"IN X, 5: isr_cnt expected 5, got {got}"
+
+
+
+def MOV(dst, op, src):
+    assert 0 <= dst <= 7, f"dst not between 0 and 7, got {dst}"
+    assert 0 <= op <= 3,  f"op not between 0 and 3, got {op}"
+    assert 0 <= src <= 7, f"src not between 0 and 7, got {src}"
+    return (OP_MOV << 13) | (dst << 5) | (op << 3) | src
+
+
+@cocotb.test()
+async def test_mov_osr_from_x(dut):
+    await setup(dut)
+    await load_instructional_memory(dut, [
+        SET(SET_X, 21),                  # 0: X = 21
+        MOV(IO_OSR, MOV_COPY, IO_X),     # 1: OSR <- X
+        JMP(JMP_ALWAYS, addr=2),         # 2: park
+    ])
+
+    await ClockCycles(dut.clk, 2)
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.osr.value)
+    assert got == 21, f"MOV OSR, X: osr expected 21, got {got}"
+    got = int(dut.user_project.sm.osr_cnt.value)
+    assert got == 0, f"MOV OSR, X: osr_cnt expected 0, got {got}"
+
+
+@cocotb.test()
+async def test_mov_isr_resets_cnt(dut):
+    await setup(dut)
+    dut.uio_in.value = 0b1
+    await load_instructional_memory(dut, [
+        IN(IN_SRC_PINS, 3, MSB_FIRST),   # 0: isr_cnt = 3
+        SET(SET_Y, 9),                   # 1: Y = 9
+        MOV(IO_ISR, MOV_COPY, IO_Y),     # 2: ISR <- Y, isr_cnt -> 0
+        JMP(JMP_ALWAYS, addr=3),         # 3: park
+    ])
+
+    await ClockCycles(dut.clk, 3)
+    await FallingEdge(dut.clk)
+
+    got = int(dut.user_project.sm.isr.value)
+    assert got == 9, f"MOV ISR, Y: isr expected 9, got {got}"
+    got = int(dut.user_project.sm.isr_cnt.value)
+    assert got == 0, f"MOV ISR, Y: isr_cnt expected 0, got {got}"
+
+
+
+async def run_program(dut, program, cycles):
+    """Load a program, run `cycles` instructions, stop on a falling edge."""
+    await setup(dut)
+    await load_instructional_memory(dut, program)
+    await ClockCycles(dut.clk, cycles)
+    await FallingEdge(dut.clk)
+
+
+@cocotb.test()
+async def test_out_pins_lsb(dut):
+    await run_program(dut, [
+        SET(SET_X, 0b10110),               # 0: X = 0b10110
+        MOV(IO_OSR, MOV_COPY, IO_X),       # 1: OSR <- X
+        OUT(IO_PINS, 5, LSB_FIRST),        # 2: bottom 5 bits -> pins
+        JMP(JMP_ALWAYS, addr=3),           # 3: park
+    ], cycles=3)
+
+    got = int(dut.uio_out.value) & 0b11111
+    assert got == 0b10110, f"OUT pins LSB: pins expected 0b10110, got {got:05b}"
+    got = int(dut.user_project.sm.osr.value)
+    assert got == 0, f"OUT pins LSB: osr should be shifted empty, got {got:#x}"
+    got = int(dut.user_project.sm.osr_cnt.value)
+    assert got == 5, f"OUT pins LSB: osr_cnt expected 5, got {got}"
+
+
+@cocotb.test()
+async def test_out_pins_msb(dut):
+    # Get 0b10110 into the TOP of the OSR: IN X LSB-first lands it in ISR[31:27]
+    await run_program(dut, [
+        SET(SET_X, 0b10110),               # 0: X = 0b10110
+        IN(IN_SRC_X, 5, LSB_FIRST),        # 1: ISR[31:27] = 10110
+        MOV(IO_OSR, MOV_COPY, IO_ISR),     # 2: OSR <- ISR
+        OUT(IO_PINS, 5, MSB_FIRST),        # 3: top 5 bits -> pins
+        JMP(JMP_ALWAYS, addr=4),           # 4: park
+    ], cycles=4)
+
+    got = int(dut.uio_out.value) & 0b11111
+    assert got == 0b10110, f"OUT pins MSB: pins expected 0b10110, got {got:05b}"
+    got = int(dut.user_project.sm.osr.value)
+    assert got == 0, f"OUT pins MSB: osr should be shifted empty, got {got:#x}"
+
+
+@cocotb.test()
+async def test_out_pins_keeps_others(dut):
+    await run_program(dut, [
+        SET(SET_PINS_OUT, 0b11000),        # 0: pins = 11000
+        SET(SET_X, 0b010),                 # 1: X = 010
+        MOV(IO_OSR, MOV_COPY, IO_X),       # 2: OSR <- X
+        OUT(IO_PINS, 3, LSB_FIRST),        # 3: low 3 pins <- 010
+        JMP(JMP_ALWAYS, addr=4),           # 4: park
+    ], cycles=4)
+
+    got = int(dut.uio_out.value) & 0b11111
+    assert got == 0b11010, f"OUT pins, 3: expected 0b11010 (pins 3-4 kept), got {got:05b}"
+
+
+@cocotb.test()
+async def test_out_x(dut):
+    await run_program(dut, [
+        SET(SET_X, 31),                    # 0: X = 31, so overwrite is visible
+        SET(SET_Y, 0b11011),               # 1: Y = 27
+        MOV(IO_OSR, MOV_COPY, IO_Y),       # 2: OSR <- Y
+        OUT(IO_X, 4, LSB_FIRST),           # 3: X <- bottom 4 bits = 1011
+        JMP(JMP_ALWAYS, addr=4),           # 4: park
+    ], cycles=4)
+
+    got = int(dut.user_project.sm.X.value)
+    assert got == 0b1011, f"OUT X, 4: X expected 0b1011 (overwritten), got {got:#b}"
+
+@cocotb.test()
+async def test_jmp_osre_taken(dut):
+    # Fresh OSR (osr_cnt = 0) -> not empty -> jump taken
+    await check_jmp(dut, [SET(SET_X, 1), MOV(IO_OSR, MOV_COPY, IO_X)],
+                    JMP_OSRNE, taken=True)
+
+@cocotb.test()
+async def test_jmp_osre_not_taken(dut):
+    # 4 x OUT NULL, 8 shifts all 32 bits out -> empty -> falls through
+    await check_jmp(dut, [MOV(IO_OSR, MOV_COPY, IO_X)] + [OUT(IO_NULL, 8, LSB_FIRST)] * 4,
+                    JMP_OSRNE, taken=False)
